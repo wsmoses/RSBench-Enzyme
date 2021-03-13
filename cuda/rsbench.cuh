@@ -1,3 +1,4 @@
+#define _CubLog
 #include<stdio.h>
 #include<stdlib.h>
 #include<sys/time.h>
@@ -72,6 +73,7 @@ typedef struct{
 	int * n_windows;
 	unsigned long length_n_windows;
 	Pole * poles;
+	Pole * d_poles;
 	unsigned long length_poles;
 	Window * windows;
 	unsigned long length_windows;

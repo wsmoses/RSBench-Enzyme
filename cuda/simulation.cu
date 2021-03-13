@@ -12,6 +12,12 @@
 // line argument.
 ////////////////////////////////////////////////////////////////////////////////////
 
+template<typename... Args>
+__device__ 
+void __enzyme_autodiff(void*, Args...);
+
+__device__ int enzyme_dup, enzyme_const, enzyme_active;
+
 void run_event_based_simulation(Input input, SimulationData GSD, unsigned long * vhash_result )
 {
 	////////////////////////////////////////////////////////////////////////////////
@@ -20,7 +26,7 @@ void run_event_based_simulation(Input input, SimulationData GSD, unsigned long *
 	printf("Running baseline event-based simulation on device...\n");
 
 	int nthreads = 32;
-	int nblocks = ceil( (double) input.lookups / 32.0);
+	int nblocks = 1;//ceil( (double) input.lookups / 32.0);
 
 	xs_lookup_kernel_baseline<<<nblocks, nthreads>>>( input, GSD );
 	gpuErrchk( cudaPeekAtLastError() );
@@ -60,8 +66,29 @@ __global__ void xs_lookup_kernel_baseline(Input in, SimulationData GSD )
 	int mat  = pick_mat(&seed);
 
 	double macro_xs[4] = {0};
+	double d_macro_xs[4] = {1.0};
 
+	#if 0
 	calculate_macro_xs( macro_xs, mat, E, in, GSD.num_nucs, GSD.mats, GSD.max_num_nucs, GSD.concs, GSD.n_windows, GSD.pseudo_K0RS, GSD.windows, GSD.poles, GSD.max_num_windows, GSD.max_num_poles );
+    #else
+	__enzyme_autodiff((void*)calculate_macro_xs,
+				enzyme_dup,   macro_xs, d_macro_xs,
+				enzyme_const, mat,
+				enzyme_const, E, 
+				enzyme_const, in, 
+				enzyme_const, GSD.num_nucs, 
+				enzyme_const, GSD.mats, 
+				enzyme_const, GSD.max_num_nucs, 
+				enzyme_const, GSD.concs, 
+				enzyme_const, GSD.n_windows, 
+				enzyme_const, GSD.pseudo_K0RS, 
+				enzyme_const, GSD.windows, 
+				enzyme_const,   GSD.poles,
+				//enzyme_dup,   GSD.poles, GSD.d_poles,
+				enzyme_const, GSD.max_num_windows, 
+				enzyme_const, GSD.max_num_poles
+			);
+    #endif
 
 	// For verification, and to prevent the compiler from optimizing
 	// all work out, we interrogate the returned macro_xs_vector array
@@ -81,7 +108,23 @@ __global__ void xs_lookup_kernel_baseline(Input in, SimulationData GSD )
 	GSD.verification[i] = max_idx+1;
 }
 
-__device__ void calculate_macro_xs( double * macro_xs, int mat, double E, Input input, int * num_nucs, int * mats, int max_num_nucs, double * concs, int * n_windows, double * pseudo_K0Rs, Window * windows, Pole * poles, int max_num_windows, int max_num_poles ) 
+__attribute__((noinline))
+__device__ void body( int i, double * __restrict__ macro_xs, int mat, double E, const Input& __restrict__ input, int * __restrict__ num_nucs, int * __restrict__ mats, int max_num_nucs, double * __restrict__ concs, int * __restrict__ n_windows, double * __restrict__ pseudo_K0Rs, Window * __restrict__ windows, Pole * __restrict__ poles, int max_num_windows, int max_num_poles ) {
+	double micro_xs[4];
+	int nuc = mats[mat * max_num_nucs + i];
+
+	if( input.doppler == 1 )
+		calculate_micro_xs_doppler( micro_xs, nuc, E, input, n_windows, pseudo_K0Rs, windows, poles, max_num_windows, max_num_poles);
+	else
+		calculate_micro_xs( micro_xs, nuc, E, input, n_windows, pseudo_K0Rs, windows, poles, max_num_windows, max_num_poles);
+
+	for( int j = 0; j < 4; j++ )
+	{
+		macro_xs[j] += micro_xs[j] * concs[mat * max_num_nucs + i];
+	}	
+}
+
+__device__ void calculate_macro_xs( double * __restrict__ macro_xs, int mat, double E, Input input, int * __restrict__ num_nucs, int * __restrict__ mats, int max_num_nucs, double * __restrict__ concs, int * __restrict__ n_windows, double * __restrict__ pseudo_K0Rs, Window * __restrict__ windows, Pole * __restrict__ poles, int max_num_windows, int max_num_poles ) 
 {
 	// zero out macro vector
 	for( int i = 0; i < 4; i++ )
@@ -90,6 +133,8 @@ __device__ void calculate_macro_xs( double * macro_xs, int mat, double E, Input 
 	// for nuclide in mat
 	for( int i = 0; i < num_nucs[mat]; i++ )
 	{
+		body(i, macro_xs, mat, E, input, num_nucs, mats, max_num_nucs, concs, n_windows, pseudo_K0Rs, windows, poles, max_num_windows, max_num_poles);
+		/*
 		double micro_xs[4];
 		int nuc = mats[mat * max_num_nucs + i];
 
@@ -102,6 +147,7 @@ __device__ void calculate_macro_xs( double * macro_xs, int mat, double E, Input 
 		{
 			macro_xs[j] += micro_xs[j] * concs[mat * max_num_nucs + i];
 		}
+		*/
 		// Debug
 		/*
 		printf("E = %.2lf, mat = %d, macro_xs[0] = %.2lf, macro_xs[1] = %.2lf, macro_xs[2] = %.2lf, macro_xs[3] = %.2lf\n",
@@ -117,6 +163,7 @@ __device__ void calculate_macro_xs( double * macro_xs, int mat, double E, Input 
 }
 
 // No Temperature dependence (i.e., 0K evaluation)
+__attribute__((always_inline))
 __device__ void calculate_micro_xs( double * micro_xs, int nuc, double E, Input input, int * n_windows, double * pseudo_K0RS, Window * windows, Pole * poles, int max_num_windows, int max_num_poles)
 {
 	// MicroScopic XS's to Calculate
@@ -168,6 +215,7 @@ __device__ void calculate_micro_xs( double * micro_xs, int nuc, double E, Input 
 // Temperature Dependent Variation of Kernel
 // (This involves using the Complex Faddeeva function to
 // Doppler broaden the poles within the window)
+__attribute__((always_inline))
 __device__ void calculate_micro_xs_doppler( double * micro_xs, int nuc, double E, Input input, int * n_windows, double * pseudo_K0RS, Window * windows, Pole * poles, int max_num_windows, int max_num_poles )
 {
 	// MicroScopic XS's to Calculate
@@ -262,6 +310,7 @@ __device__ void calculate_sig_T( int nuc, double E, Input input, double * pseudo
 {
 	double phi;
 
+	#pragma unroll
 	for( int i = 0; i < 4; i++ )
 	{
 		phi = pseudo_K0RS[nuc * input.numL + i] * sqrt(E);

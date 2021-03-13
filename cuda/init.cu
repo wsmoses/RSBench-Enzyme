@@ -42,6 +42,11 @@ SimulationData move_simulation_data_to_device( Input in, SimulationData SD )
 	gpuErrchk( cudaMemcpy(GSD.poles, SD.poles, sz, cudaMemcpyHostToDevice) );
 	total_sz += sz;
 
+	sz = GSD.length_poles * sizeof(Pole);
+	gpuErrchk( cudaMalloc((void **) &GSD.d_poles, sz) );
+	gpuErrchk( cudaMemcpy(GSD.d_poles, SD.d_poles, sz, cudaMemcpyHostToDevice) );
+	total_sz += sz;
+
 	sz = GSD.length_windows * sizeof(Window);
 	gpuErrchk( cudaMalloc((void **) &GSD.windows, sz) );
 	gpuErrchk( cudaMemcpy(GSD.windows, SD.windows, sz, cudaMemcpyHostToDevice) );
@@ -90,6 +95,7 @@ SimulationData initialize_simulation( Input input )
 	// Prepare full resonance grid
 	printf("Generating resonance parameter grid...\n");
 	SD.poles = generate_poles( input, SD.n_poles, &seed, &SD.max_num_poles );
+	SD.d_poles =  (Pole *) calloc( input.n_nuclides * SD.max_num_poles,  sizeof(Pole));
 	SD.length_poles = input.n_nuclides * SD.max_num_poles;
 
 	// Prepare full Window grid

@@ -94,7 +94,7 @@ __global__ void xs_lookup_kernel_baseline(Input in, SimulationData GSD )
 
 	double macro_xs2[4] = {0};
 	calculate_macro_xs( macro_xs2, mat, E, in, GSD.num_nucs, GSD.mats, GSD.max_num_nucs, GSD.concs, GSD.n_windows, GSD.pseudo_K0RS, GSD.windows, GSD.d_poles, GSD.max_num_windows, GSD.max_num_poles );
-	printf("zz=%f %f %f %f\n", macro_xs2[0], macro_xs[0], GSD.poles[0].MP_EA.r , GSD.d_poles[0].MP_EA.r  );
+	//printf("zz=%f %f %f %f\n", macro_xs2[0], macro_xs[0], GSD.poles[0].MP_EA.r , GSD.d_poles[0].MP_EA.r  );
 	atomicAdd(GSD.dout, (macro_xs2[0] - macro_xs[0]) / 1e-3 );
 
     #else
@@ -284,6 +284,7 @@ __device__ void calculate_micro_xs_doppler( double * micro_xs, int nuc, double E
 	for( int i = w.start; i < w.end; i++ )
 	{
 		Pole pole = poles[nuc * max_num_poles + i];
+		//Pole pole = poles[0];//nuc * max_num_poles + i];
 
 		// Prep Z
 		RSComplex E_c = {E, 0};
@@ -294,9 +295,12 @@ __device__ void calculate_micro_xs_doppler( double * micro_xs, int nuc, double E
 		RSComplex faddeeva = fast_nuclear_W( Z );
 
 		// Update W
+		if (nuc * max_num_poles + i == 0) {
 		sigT += (c_mul( pole.MP_RT, c_mul(faddeeva, sigTfactors[pole.l_value]) )).r;
 		sigA += (c_mul( pole.MP_RA , faddeeva)).r;
 		sigF += (c_mul( pole.MP_RF , faddeeva)).r;
+		}
+		break;
 	}
 
 	sigE = sigT - sigA;
@@ -305,7 +309,7 @@ __device__ void calculate_micro_xs_doppler( double * micro_xs, int nuc, double E
 	micro_xs[1] = sigA;
 	micro_xs[2] = sigF;
 	micro_xs[3] = sigE;
-	printf("dop %f %f %f %f\n", sigT, sigA, sigF, sigE);
+	//printf("dop %f %f %f %f\n", sigT, sigA, sigF, sigE);
 }
 
 // picks a material based on a probabilistic distribution

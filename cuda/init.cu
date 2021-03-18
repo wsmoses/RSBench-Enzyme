@@ -46,7 +46,7 @@ SimulationData move_simulation_data_to_device( Input in, SimulationData SD )
 	gpuErrchk( cudaMalloc((void **) &GSD.d_poles, sz) );
 	
 	#if FWD
-	SD.poles[0].MP_EA.r += 1;//1e-3;
+	SD.poles[0].MP_EA.r += 1e-3;
 	gpuErrchk( cudaMemcpy(GSD.d_poles, SD.poles, sz, cudaMemcpyHostToDevice) );
 	#else
 	gpuErrchk( cudaMemcpy(GSD.d_poles, SD.d_poles, sz, cudaMemcpyHostToDevice) );

@@ -29,7 +29,7 @@ obj = $(source:.cu=.o)
 #===============================================================================
 
 # Standard Flags
-CFLAGS := -mllvm -max-heap-to-stack-size=-1 -DFWD=0
+CFLAGS := -mllvm -max-heap-to-stack-size=-1 -DFWD=1
 # -Rpass=attributor -mllvm -debug -mllvm -debug-only=attributor
 
 # Regular gcc Compiler

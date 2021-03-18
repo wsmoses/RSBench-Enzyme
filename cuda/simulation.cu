@@ -18,7 +18,7 @@ void __enzyme_autodiff(void*, Args...);
 
 __device__ int enzyme_dup, enzyme_const, enzyme_active;
 
-void run_event_based_simulation(Input input, SimulationData GSD, unsigned long * vhash_result )
+void run_event_based_simulation(Input input, SimulationData GSD, SimulationData SD, unsigned long * vhash_result )
 {
 	////////////////////////////////////////////////////////////////////////////////
 	// Configure & Launch Simulation Kernel
@@ -26,7 +26,9 @@ void run_event_based_simulation(Input input, SimulationData GSD, unsigned long *
 	printf("Running baseline event-based simulation on device...\n");
 
 	int nthreads = 32;
-	int nblocks = 1;//ceil( (double) input.lookups / 32.0);
+	int nblocks = ceil( (double) input.lookups / 32.0);
+
+	gpuErrchk( cudaDeviceSynchronize() );
 
 	xs_lookup_kernel_baseline<<<nblocks, nthreads>>>( input, GSD );
 	gpuErrchk( cudaPeekAtLastError() );
@@ -38,10 +40,30 @@ void run_event_based_simulation(Input input, SimulationData GSD, unsigned long *
 	printf("Reducing verification results...\n");
 
 	unsigned long verification_scalar = thrust::reduce(thrust::device, GSD.verification, GSD.verification + input.lookups, 0);
+
 	gpuErrchk( cudaPeekAtLastError() );
 	gpuErrchk( cudaDeviceSynchronize() );
 
 	*vhash_result = verification_scalar;
+
+	#if FWD
+
+	double *dout = (double*)malloc(sizeof(double));
+	gpuErrchk( cudaMemcpy(dout, GSD.dout, sizeof(double), cudaMemcpyDeviceToHost) );
+	gpuErrchk( cudaPeekAtLastError() );
+	gpuErrchk( cudaDeviceSynchronize() );
+	printf("dout=%f\n", *dout);
+
+	#else
+
+	size_t sz = 10;//GSD.length_poles;
+    Pole here[sz];// = 1.23456;
+    gpuErrchk( cudaMemcpy(&here, GSD.d_poles, sz * sizeof(Pole), cudaMemcpyDeviceToHost) );
+
+	for (int i=0; i < sz; ++i)
+ 	   printf("here[%d]=%f %f %f %f %f %f %f %f\n", i, here[i].MP_EA.r, here[i].MP_EA.i, here[i].MP_RT.r, here[i].MP_RT.i, here[i].MP_RA.r, here[i].MP_RA.i, here[i].MP_RF.r, here[i].MP_RF.i);
+
+	#endif
 }
 
 // In this kernel, we perform a single lookup with each thread. Threads within a warp
@@ -66,11 +88,20 @@ __global__ void xs_lookup_kernel_baseline(Input in, SimulationData GSD )
 	int mat  = pick_mat(&seed);
 
 	double macro_xs[4] = {0};
-	double d_macro_xs[4] = {1.0};
 
-	#if 0
-	calculate_macro_xs( macro_xs, mat, E, in, GSD.num_nucs, GSD.mats, GSD.max_num_nucs, GSD.concs, GSD.n_windows, GSD.pseudo_K0RS, GSD.windows, GSD.poles, GSD.max_num_windows, GSD.max_num_poles );
+	#if FWD
+	calculate_macro_xs( macro_xs, mat, E, in, GSD.num_nucs, GSD.mats, GSD.max_num_nucs, GSD.concs, GSD.n_windows, GSD.pseudo_K0RS, GSD.windows,   GSD.poles, GSD.max_num_windows, GSD.max_num_poles );
+
+	double macro_xs2[4] = {0};
+	calculate_macro_xs( macro_xs2, mat, E, in, GSD.num_nucs, GSD.mats, GSD.max_num_nucs, GSD.concs, GSD.n_windows, GSD.pseudo_K0RS, GSD.windows, GSD.d_poles, GSD.max_num_windows, GSD.max_num_poles );
+	printf("zz=%f %f %f %f\n", macro_xs2[0], macro_xs[0], GSD.poles[0].MP_EA.r , GSD.d_poles[0].MP_EA.r  );
+	atomicAdd(GSD.dout, (macro_xs2[0] - macro_xs[0]) / 1e-3 );
+
     #else
+
+	double d_macro_xs[4] = {0};
+	d_macro_xs[0] = 1.0;
+
 	__enzyme_autodiff((void*)calculate_macro_xs,
 				enzyme_dup,   macro_xs, d_macro_xs,
 				enzyme_const, mat,
@@ -83,8 +114,8 @@ __global__ void xs_lookup_kernel_baseline(Input in, SimulationData GSD )
 				enzyme_const, GSD.n_windows, 
 				enzyme_const, GSD.pseudo_K0RS, 
 				enzyme_const, GSD.windows, 
-				enzyme_const,   GSD.poles,
-				//enzyme_dup,   GSD.poles, GSD.d_poles,
+				//enzyme_const,   GSD.poles,
+				enzyme_dup,   GSD.poles, GSD.d_poles,
 				enzyme_const, GSD.max_num_windows, 
 				enzyme_const, GSD.max_num_poles
 			);
@@ -131,10 +162,13 @@ __device__ void calculate_macro_xs( double * __restrict__ macro_xs, int mat, dou
 		macro_xs[i] = 0;
 
 	// for nuclide in mat
-	for( int i = 0; i < num_nucs[mat]; i++ )
+	int sz = num_nucs[mat];
+	for( int i = 0; i < sz; i++ )
+	// for( int i = 0; i < num_nucs[mat]; i++ )
 	{
-		body(i, macro_xs, mat, E, input, num_nucs, mats, max_num_nucs, concs, n_windows, pseudo_K0Rs, windows, poles, max_num_windows, max_num_poles);
-		/*
+		//body(i, macro_xs, mat, E, input, num_nucs, mats, max_num_nucs, concs, n_windows, pseudo_K0Rs, windows, poles, max_num_windows, max_num_poles);
+		
+		///*
 		double micro_xs[4];
 		int nuc = mats[mat * max_num_nucs + i];
 
@@ -147,7 +181,8 @@ __device__ void calculate_macro_xs( double * __restrict__ macro_xs, int mat, dou
 		{
 			macro_xs[j] += micro_xs[j] * concs[mat * max_num_nucs + i];
 		}
-		*/
+		//*/
+		
 		// Debug
 		/*
 		printf("E = %.2lf, mat = %d, macro_xs[0] = %.2lf, macro_xs[1] = %.2lf, macro_xs[2] = %.2lf, macro_xs[3] = %.2lf\n",
@@ -210,6 +245,7 @@ __device__ void calculate_micro_xs( double * micro_xs, int nuc, double E, Input 
 	micro_xs[1] = sigA;
 	micro_xs[2] = sigF;
 	micro_xs[3] = sigE;
+	printf("reg %f %f %f %f\n", sigT, sigA, sigF, sigE);
 }
 
 // Temperature Dependent Variation of Kernel
@@ -242,6 +278,8 @@ __device__ void calculate_micro_xs_doppler( double * micro_xs, int nuc, double E
 
 	double dopp = 0.5;
 
+	//if (w.start == 0)
+	//	printf("start=%d\n", w.start);
 	// Loop over Poles within window, add contributions
 	for( int i = w.start; i < w.end; i++ )
 	{
@@ -267,6 +305,7 @@ __device__ void calculate_micro_xs_doppler( double * micro_xs, int nuc, double E
 	micro_xs[1] = sigA;
 	micro_xs[2] = sigF;
 	micro_xs[3] = sigE;
+	printf("dop %f %f %f %f\n", sigT, sigA, sigF, sigE);
 }
 
 // picks a material based on a probabilistic distribution
@@ -324,7 +363,7 @@ __device__ void calculate_sig_T( int nuc, double E, Input input, double * pseudo
 
 		phi *= 2.0;
 
-		sigTfactors[i].r = cos(phi);
+		sigTfactors[i].r = +cos(phi);
 		sigTfactors[i].i = -sin(phi);
 	}
 }
@@ -332,6 +371,7 @@ __device__ void calculate_sig_T( int nuc, double E, Input input, double * pseudo
 // This function uses a combination of the Abrarov Approximation
 // and the QUICK_W three term asymptotic expansion.
 // Only expected to use Abrarov ~0.5% of the time.
+__attribute__((always_inline))
 __device__ RSComplex fast_nuclear_W( RSComplex Z )
 {
 	// Abrarov 
@@ -384,6 +424,7 @@ __device__ RSComplex fast_nuclear_W( RSComplex Z )
 		RSComplex one = {1, 0};
 		RSComplex W = c_div(c_mul(i, ( c_sub(one, fast_cexp(c_mul(t1, Z))) )) , c_mul(t2, Z));
 		RSComplex sum = {0,0};
+		#pragma unroll
 		for( int n = 0; n < 10; n++ )
 		{
 			RSComplex t3 = {neg_1n[n], 0};

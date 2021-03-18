@@ -32,6 +32,7 @@ int main(int argc, char * argv[])
 	SimulationData SD = initialize_simulation( input );
 	SimulationData GSD = move_simulation_data_to_device( input, SD );
 
+  	cudaDeviceSetLimit(cudaLimitMallocHeapSize, 1*1024*1024*1024);
 	stop = get_time();
 
 	printf("Initialization Complete. (%.2lf seconds)\n", stop-start);
@@ -52,7 +53,7 @@ int main(int argc, char * argv[])
 	if( input.simulation_method == EVENT_BASED )
 	{
 		if( input.kernel_id == 0 )
-			run_event_based_simulation(input, GSD, &vhash );
+			run_event_based_simulation(input, GSD, SD, &vhash );
 		else if( input.kernel_id == 1 )
 			run_event_based_simulation_optimization_1(input, GSD, &vhash );
 		else

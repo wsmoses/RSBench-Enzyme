@@ -44,7 +44,14 @@ SimulationData move_simulation_data_to_device( Input in, SimulationData SD )
 
 	sz = GSD.length_poles * sizeof(Pole);
 	gpuErrchk( cudaMalloc((void **) &GSD.d_poles, sz) );
+	
+	#if FWD
+	SD.poles[0].MP_EA.r += 1;//1e-3;
+	gpuErrchk( cudaMemcpy(GSD.d_poles, SD.poles, sz, cudaMemcpyHostToDevice) );
+	#else
 	gpuErrchk( cudaMemcpy(GSD.d_poles, SD.d_poles, sz, cudaMemcpyHostToDevice) );
+	#endif
+
 	total_sz += sz;
 
 	sz = GSD.length_windows * sizeof(Window);
@@ -62,6 +69,13 @@ SimulationData move_simulation_data_to_device( Input in, SimulationData SD )
 	sz = in.lookups * sizeof(unsigned long);
 	gpuErrchk( cudaMalloc((void **) &GSD.verification, sz) );
 	total_sz += sz;
+
+
+	gpuErrchk( cudaMalloc((void **) &GSD.dout, sizeof(double)) );
+	printf("doutptr=%p\n", GSD.dout);
+	double zero = 0;
+	gpuErrchk( cudaMemcpy(GSD.dout, &zero, sizeof(double), cudaMemcpyHostToDevice) );
+
 	GSD.length_verification = in.lookups;
 	
 	// Synchronize

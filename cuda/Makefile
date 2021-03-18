@@ -29,17 +29,18 @@ obj = $(source:.cu=.o)
 #===============================================================================
 
 # Standard Flags
-CFLAGS := 
+CFLAGS := -mllvm -max-heap-to-stack-size=-1 -DFWD=0
+# -Rpass=attributor -mllvm -debug -mllvm -debug-only=attributor
 
 # Regular gcc Compiler
 ifeq ($(COMPILER),nvidia)
-  # CC = /mnt/sabrent/wmoses/llvm13/buildallfast/bin/clang++
+  CC = /mnt/sabrent/wmoses/llvm13/buildallfast/bin/clang++
   # -Rpass=enzyme 
-  # CFLAGS += -g -ffast-math -mllvm -enable-implements-attr-resolver -mllvm -enzyme-print -Rpass=enzyme -fno-experimental-new-pass-manager --cuda-path=/usr/local/cuda-11.0 -L/usr/local/cuda-11.0/lib64 --cuda-gpu-arch=sm_$(SM_VERSION)  -std=c++11 -Xclang -load -Xclang /home/wmoses/git/Enzyme/enzyme/build13Fast/Enzyme/ClangEnzyme-13.so 
+  CFLAGS += -g -ffast-math -mllvm -enzyme-print -Rpass=enzyme -fno-experimental-new-pass-manager --cuda-path=/usr/local/cuda-11.2 -L/usr/local/cuda-11.2/lib64 --cuda-gpu-arch=sm_$(SM_VERSION)  -std=c++11 -Xclang -load -Xclang /home/wmoses/git/Enzyme/enzyme/build13Fast/Enzyme/ClangEnzyme-13.so -mllvm -enzyme-new-cache=false
 
-  CC = /mnt/sabrent/wmoses/llvm13/build/bin/clang++
+  # CC = /mnt/sabrent/wmoses/llvm13/buildall/bin/clang++
   # -Rpass=enzyme 
-  CFLAGS += -g -ffast-math -mllvm -enzyme-print -Rpass=enzyme -fno-experimental-new-pass-manager --cuda-path=/usr/local/cuda-11.0 -L/usr/local/cuda-11.0/lib64 --cuda-gpu-arch=sm_$(SM_VERSION)  -std=c++11 -Xclang -load -Xclang /home/wmoses/git/Enzyme/enzyme/build13D/Enzyme/ClangEnzyme-13.so 
+  # CFLAGS += -g -ffast-math -mllvm -enzyme-print -Rpass=enzyme -fno-experimental-new-pass-manager --cuda-path=/usr/local/cuda-11.2 -L/usr/local/cuda-11.2/lib64 --cuda-gpu-arch=sm_$(SM_VERSION)  -std=c++11 -Xclang -load -Xclang /home/wmoses/git/Enzyme/enzyme/build13D/Enzyme/ClangEnzyme-13.so -mllvm -enzyme-new-cache=false
 
 endif
 

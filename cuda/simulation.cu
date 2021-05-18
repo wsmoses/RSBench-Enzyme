@@ -46,7 +46,8 @@ void run_event_based_simulation(Input input, SimulationData GSD, SimulationData 
 
 	*vhash_result = verification_scalar;
 
-	#if FWD
+	#ifdef VERIFY
+	#if FORWARD
 
 	double *dout = (double*)malloc(sizeof(double));
 	gpuErrchk( cudaMemcpy(dout, GSD.dout, sizeof(double), cudaMemcpyDeviceToHost) );
@@ -63,6 +64,7 @@ void run_event_based_simulation(Input input, SimulationData GSD, SimulationData 
 	for (int i=0; i < sz; ++i)
  	   printf("here[%d]=%f %f %f %f %f %f %f %f\n", i, here[i].MP_EA.r, here[i].MP_EA.i, here[i].MP_RT.r, here[i].MP_RT.i, here[i].MP_RA.r, here[i].MP_RA.i, here[i].MP_RF.r, here[i].MP_RF.i);
 
+	#endif
 	#endif
 }
 
@@ -89,13 +91,15 @@ __global__ void xs_lookup_kernel_baseline(Input in, SimulationData GSD )
 
 	double macro_xs[4] = {0};
 
-	#if FWD
+	#ifdef FORWARD
 	calculate_macro_xs( macro_xs, mat, E, in, GSD.num_nucs, GSD.mats, GSD.max_num_nucs, GSD.concs, GSD.n_windows, GSD.pseudo_K0RS, GSD.windows,   GSD.poles, GSD.max_num_windows, GSD.max_num_poles );
 
+	#ifdef VERIFY
 	double macro_xs2[4] = {0};
 	calculate_macro_xs( macro_xs2, mat, E, in, GSD.num_nucs, GSD.mats, GSD.max_num_nucs, GSD.concs, GSD.n_windows, GSD.pseudo_K0RS, GSD.windows, GSD.d_poles, GSD.max_num_windows, GSD.max_num_poles );
 	printf("zz=%f %f %f %f\n", macro_xs2[0], macro_xs[0], GSD.poles[0].MP_EA.r , GSD.d_poles[0].MP_EA.r  );
 	atomicAdd(GSD.dout, (macro_xs2[0] - macro_xs[0]) / 1e-3 );
+	#endif
 
     #else
 
@@ -198,7 +202,9 @@ __device__ void calculate_macro_xs( double * __restrict__ macro_xs, int mat, dou
 }
 
 // No Temperature dependence (i.e., 0K evaluation)
+#ifdef ALWAYS_INLINE
 __attribute__((always_inline))
+#endif
 __device__ void calculate_micro_xs( double * micro_xs, int nuc, double E, Input input, int * n_windows, double * pseudo_K0RS, Window * windows, Pole * poles, int max_num_windows, int max_num_poles)
 {
 	// MicroScopic XS's to Calculate
@@ -245,13 +251,15 @@ __device__ void calculate_micro_xs( double * micro_xs, int nuc, double E, Input 
 	micro_xs[1] = sigA;
 	micro_xs[2] = sigF;
 	micro_xs[3] = sigE;
-	printf("reg %f %f %f %f\n", sigT, sigA, sigF, sigE);
+	// printf("reg %f %f %f %f\n", sigT, sigA, sigF, sigE);
 }
 
 // Temperature Dependent Variation of Kernel
 // (This involves using the Complex Faddeeva function to
 // Doppler broaden the poles within the window)
+#ifdef ALWAYS_INLINE
 __attribute__((always_inline))
+#endif
 __device__ void calculate_micro_xs_doppler( double * micro_xs, int nuc, double E, Input input, int * n_windows, double * pseudo_K0RS, Window * windows, Pole * poles, int max_num_windows, int max_num_poles )
 {
 	// MicroScopic XS's to Calculate
@@ -305,7 +313,6 @@ __device__ void calculate_micro_xs_doppler( double * micro_xs, int nuc, double E
 	micro_xs[1] = sigA;
 	micro_xs[2] = sigF;
 	micro_xs[3] = sigE;
-	printf("dop %f %f %f %f\n", sigT, sigA, sigF, sigE);
 }
 
 // picks a material based on a probabilistic distribution

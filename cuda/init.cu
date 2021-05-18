@@ -72,7 +72,7 @@ SimulationData move_simulation_data_to_device( Input in, SimulationData SD )
 
 
 	gpuErrchk( cudaMalloc((void **) &GSD.dout, sizeof(double)) );
-	printf("doutptr=%p\n", GSD.dout);
+	//printf("doutptr=%p\n", GSD.dout);
 	double zero = 0;
 	gpuErrchk( cudaMemcpy(GSD.dout, &zero, sizeof(double), cudaMemcpyHostToDevice) );
 

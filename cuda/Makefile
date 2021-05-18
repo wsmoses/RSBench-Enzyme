@@ -3,7 +3,15 @@
 #===============================================================================
 
 COMPILER    = nvidia
-OPTIMIZE    = yes
+OPTIMIZE    ?= yes
+
+NEWCACHE    ?= no
+AA          ?= no
+PHISTRUCT   ?= no
+FORWARD     ?= no
+INLINE      ?= yes
+CACHELICM   ?= yes
+
 DEBUG       = no
 PROFILE     = no
 SM_VERSION  = 60
@@ -29,18 +37,19 @@ obj = $(source:.cu=.o)
 #===============================================================================
 
 # Standard Flags
-CFLAGS := -mllvm -max-heap-to-stack-size=-1 -DFWD=0
+CFLAGS := -mllvm -max-heap-to-stack-size=1000000
+# -mllvm -max-heap-to-stack-size=-1
 # -Rpass=attributor -mllvm -debug -mllvm -debug-only=attributor
 
 # Regular gcc Compiler
 ifeq ($(COMPILER),nvidia)
   CC = /mnt/sabrent/wmoses/llvm13/buildallfast/bin/clang++
   # -Rpass=enzyme 
-  CFLAGS += -g -ffast-math -mllvm -enzyme-print -Rpass=enzyme -fno-experimental-new-pass-manager --cuda-path=/usr/local/cuda-11.2 -L/usr/local/cuda-11.2/lib64 --cuda-gpu-arch=sm_$(SM_VERSION)  -std=c++11 -Xclang -load -Xclang /home/wmoses/git/Enzyme/enzyme/build13Fast/Enzyme/ClangEnzyme-13.so -mllvm -enzyme-new-cache=false
+  CFLAGS += -g -ffast-math -mllvm -enzyme-print -Rpass=enzyme -fno-experimental-new-pass-manager --cuda-path=/usr/local/cuda-11.2 -L/usr/local/cuda-11.2/lib64 --cuda-gpu-arch=sm_$(SM_VERSION)  -std=c++11 -Xclang -load -Xclang /home/wmoses/git/Enzyme/enzyme/build13Fast/Enzyme/ClangEnzyme-13.so
 
   # CC = /mnt/sabrent/wmoses/llvm13/buildall/bin/clang++
   # -Rpass=enzyme 
-  # CFLAGS += -g -ffast-math -mllvm -enzyme-print -Rpass=enzyme -fno-experimental-new-pass-manager --cuda-path=/usr/local/cuda-11.2 -L/usr/local/cuda-11.2/lib64 --cuda-gpu-arch=sm_$(SM_VERSION)  -std=c++11 -Xclang -load -Xclang /home/wmoses/git/Enzyme/enzyme/build13D/Enzyme/ClangEnzyme-13.so -mllvm -enzyme-new-cache=false
+  # CFLAGS += -g -ffast-math -mllvm -enzyme-print -Rpass=enzyme -fno-experimental-new-pass-manager --cuda-path=/usr/local/cuda-11.2 -L/usr/local/cuda-11.2/lib64 --cuda-gpu-arch=sm_$(SM_VERSION)  -std=c++11 -Xclang -load -Xclang /home/wmoses/git/Enzyme/enzyme/build13D/Enzyme/ClangEnzyme-13.so
 
 endif
 
@@ -63,6 +72,45 @@ endif
 ifeq ($(OPTIMIZE),yes)
   CFLAGS += -O3
 endif
+
+
+# Optimization Flags
+ifeq ($(FORWARD),yes)
+  CFLAGS += -DFORWARD=1
+endif
+
+
+# Optimization Flags
+ifeq ($(NEWCACHE),yes)
+  CFLAGS += -mllvm -enzyme-new-cache=1
+else
+  CFLAGS += -mllvm -enzyme-new-cache=0
+endif
+
+ifeq ($(AA),yes)
+  CFLAGS += -mllvm -enzyme-aggressive-aa=1
+else
+  CFLAGS += -mllvm -enzyme-aggressive-aa=0
+endif
+
+
+ifeq ($(PHISTRUCT),yes)
+  CFLAGS += -mllvm -enzyme-phi-restructure=1
+else
+  CFLAGS += -mllvm -enzyme-phi-restructure=0
+endif
+
+ifeq ($(INLINE),yes)
+  CFLAGS += -DALWAYS_INLINE=1
+endif
+
+ifeq ($(CACHELICM),yes)
+  CFLAGS +=  -mllvm -enzyme-loop-invariant-cache=1
+else
+  CFLAGS +=  -mllvm -enzyme-loop-invariant-cache=0
+endif
+
+
 
 #===============================================================================
 # Targets to Build
